@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blender Bridge Ultimate V6</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js r169 -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #111; color: #eee; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; overflow: hidden; }
+
+        /* Sidebar */
+        #sidebar { width: 380px; background: #1e1e1e; display: flex; flex-direction: column; z-index: 10; border-right: 1px solid #333; }
+        .sidebar-header { padding: 15px; background: #252525; border-bottom: 1px solid #333; }
+        .sidebar-content { flex: 1; overflow-y: auto; padding: 15px; }
+
+        #main-view { flex: 1; position: relative; background: #000; }
+
+        /* Controls */
+        .control-group { margin-bottom: 15px; background: #2a2a2a; padding: 10px; border-radius: 6px; border: 1px solid #3a3a3a; }
+        .group-title { font-size: 0.7rem; text-transform: uppercase; color: #888; margin-bottom: 8px; font-weight: bold; letter-spacing: 0.5px; display: flex; justify-content: space-between; align-items: center; }
+
+        button { width: 100%; padding: 6px; border-radius: 4px; font-weight: 600; cursor: pointer; border: none; transition: 0.2s; margin-top: 4px; font-size: 0.8rem; }
+        .btn-blue { background: #2563eb; color: white; } .btn-blue:hover { background: #1d4ed8; }
+        .btn-green { background: #10b981; color: white; } .btn-green:hover { background: #059669; }
+        .btn-red { background: #ef4444; color: white; } .btn-red:hover { background: #dc2626; }
+        .btn-gray { background: #4b5563; color: white; } .btn-gray:hover { background: #374151; }
+        .btn-disabled { background: #444; color: #888; cursor: not-allowed; }
+
+        .transform-row { display: flex; align-items: center; margin-bottom: 4px; }
+        .transform-label { width: 40px; font-size: 12px; color: #aaa; }
+        .transform-inputs { flex: 1; display: flex; gap: 4px; }
+        .num-input { flex: 1; background: #111; border: 1px solid #444; color: #ccc; font-size: 11px; padding: 2px 4px; border-radius: 2px; width: 0; }
+        .num-input:focus { border-color: #3b82f6; outline: none; }
+
+        .slider-row { display: flex; align-items: center; font-size: 12px; margin-bottom: 5px; }
+        .slider-row label { width: 70px; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .slider-row input[type=range] { flex: 1; height: 4px; margin-left: 8px; }
+        .slider-val { width: 30px; text-align: right; font-size: 10px; color: #888; margin-left: 5px; }
+
+        #outliner-list { max-height: 180px; overflow-y: auto; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; }
+        .outliner-item { padding: 4px 8px; font-size: 12px; color: #ccc; cursor: pointer; border-bottom: 1px solid #222; display: flex; align-items: center;}
+        .outliner-item:hover { background: #333; }
+        .outliner-item.active { background: #2563eb; color: white; }
+        .icon-type { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+        .icon-mesh { background: #aaa; }
+        .icon-light { background: #fbbf24; box-shadow: 0 0 4px #fbbf24; }
+
+        /* Code Editor */
+        .code-wrapper { position: relative; width: 100%; }
+        .code-input { background-color: #111; color: #4ade80; font-family: 'Consolas', monospace; font-size: 13px; border: 1px solid #444; border-radius: 4px; width: 100%; height: 200px; padding: 10px; resize: vertical; outline: none; white-space: pre; tab-size: 4; }
+        #suggestion-box { position: absolute; background: #2d2d2d; border: 1px solid #555; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); max-height: 150px; overflow-y: auto; width: 200px; z-index: 100; display: none; font-family: 'Consolas', monospace; font-size: 12px; }
+        .suggestion-item { padding: 4px 8px; cursor: pointer; color: #ccc; border-bottom: 1px solid #333; }
+        .suggestion-item:hover { background-color: #3b82f6; color: white; }
+
+        #log-wrapper { position: absolute; bottom: 0; left: 0; right: 0; height: 100px; background: #0d0d0d; border-top: 2px solid #333; display: flex; flex-direction: column; z-index: 5; }
+        #log-panel { flex: 1; padding: 8px; font-family: 'Consolas', monospace; font-size: 11px; overflow-y: auto; white-space: pre-wrap; }
+        .log-line { margin-bottom: 1px; } .log-success { color: #4ade80; } .log-error { color: #f87171; }
+
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; margin-right: 6px; }
+        .dot.connected { background: #22c55e; box-shadow: 0 0 4px #22c55e; }
+
+        .mode-switch { display: flex; background: #1a1a1a; padding: 4px; border-bottom: 1px solid #333; margin-bottom: 10px;}
+        .mode-btn { flex: 1; text-align: center; padding: 8px; cursor: pointer; font-size: 0.85rem; color: #888; border-bottom: 2px solid transparent; }
+        .mode-btn.active { color: #fff; border-bottom-color: #3b82f6; background: #252525; }
+
+        .toggle-switch { display: flex; background: #111; border-radius: 12px; padding: 2px; width: fit-content; }
+        .toggle-opt { padding: 2px 8px; border-radius: 10px; font-size: 10px; cursor: pointer; color: #666; }
+        .toggle-opt.active { background: #3b82f6; color: white; }
+    </style>
+</head>
+<body>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <div class="flex items-center justify-between">
+                <h1 class="text-md font-bold text-white">Blender Bridge Ultimate</h1>
+                <div class="flex items-center bg-gray-800 px-2 py-1 rounded">
+                    <div id="status-dot" class="dot"></div>
+                    <button id="btn-connect" class="text-xs bg-transparent border-none p-0 text-blue-400 hover:text-blue-300" style="width:auto; margin:0;">Connect</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab Switch -->
+        <div class="mode-switch">
+            <div id="tab-scene" class="mode-btn active">Scene</div>
+            <div id="tab-script" class="mode-btn">Scripting</div>
+        </div>
+
+        <div class="sidebar-content">
+
+            <!-- === SCENE TAB === -->
+            <div id="panel-scene">
+                <div class="control-group">
+                    <div class="group-title">Scene Sync</div>
+                    <button id="btn-get-scene" class="btn-green">📥 Sync from Blender</button>
+                    <div id="outliner-list" class="mt-2">
+                        <div class="p-2 text-xs text-gray-500 text-center">点击同步以获取数据</div>
+                    </div>
+                </div>
+
+                <!-- Inspector -->
+                <div class="control-group">
+                    <div class="group-title">
+                        <span>Inspector</span>
+                        <div class="toggle-switch">
+                            <div id="space-local" class="toggle-opt">Local</div>
+                            <div id="space-world" class="toggle-opt active">World</div>
+                        </div>
+                    </div>
+
+                    <div id="inspector-empty" class="text-xs text-gray-500 text-center py-2">未选择对象</div>
+
+                    <!-- Object Inspector -->
+                    <div id="inspector-controls" style="display:none;">
+                        <div class="mb-2 text-xs font-bold text-blue-400 truncate" id="sel-name">Object Name</div>
+
+                        <!-- Transform Section -->
+                        <div class="transform-row">
+                            <span class="transform-label">Loc</span>
+                            <div class="transform-inputs">
+                                <input type="number" id="inp-px" class="num-input" step="0.1"><input type="number" id="inp-py" class="num-input" step="0.1"><input type="number" id="inp-pz" class="num-input" step="0.1">
+                            </div>
+                        </div>
+                        <div class="transform-row">
+                            <span class="transform-label">Rot</span>
+                            <div class="transform-inputs">
+                                <input type="number" id="inp-rx" class="num-input" step="1"><input type="number" id="inp-ry" class="num-input" step="1"><input type="number" id="inp-rz" class="num-input" step="1">
+                            </div>
+                        </div>
+                        <div class="transform-row">
+                            <span class="transform-label">Scale</span>
+                            <div class="transform-inputs">
+                                <input type="number" id="inp-sx" class="num-input" step="0.1"><input type="number" id="inp-sy" class="num-input" step="0.1"><input type="number" id="inp-sz" class="num-input" step="0.1">
+                            </div>
+                        </div>
+
+                        <!-- Light Specific Section -->
+                        <div id="inspector-light" style="display:none; margin-top:10px; border-top:1px solid #444; padding-top:8px;">
+                            <div class="text-xs text-gray-500 mb-1">Light Settings</div>
+                            <div class="slider-row">
+                                <label>Color</label>
+                                <input type="color" id="inp-light-col" style="height:20px; border:none; padding:0; width:100%;">
+                            </div>
+                            <div class="slider-row">
+                                <label>Intensity</label>
+                                <input type="range" id="inp-light-int" min="0" max="200" step="0.5">
+                                <span id="val-light-int" class="slider-val">1</span>
+                            </div>
+                        </div>
+
+                        <div class="flex gap-1 mt-2">
+                            <button id="mode-t" class="btn-gray text-xs">Move</button>
+                            <button id="mode-r" class="btn-gray text-xs">Rot</button>
+                            <button id="mode-s" class="btn-gray text-xs">Scale</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Global Lighting Mode -->
+                <div class="control-group">
+                    <div class="group-title">
+                        <span>Light Source</span>
+                        <select id="light-source" class="bg-black text-xs border border-gray-600 rounded px-1">
+                            <option value="default">Default Scene Light</option>
+                            <option value="blender">Blender Lights</option>
+                        </select>
+                    </div>
+
+                    <!-- Default Light Controls -->
+                    <div id="panel-default-light">
+                        <div class="slider-row">
+                            <label>Intensity</label>
+                            <input type="range" id="def-light-int" min="0" max="5" step="0.1" value="1">
+                        </div>
+                        <div class="slider-row">
+                            <label>Sun Rot</label>
+                            <input type="range" id="def-light-rot" min="0" max="6.28" step="0.1" value="0.5">
+                        </div>
+                    </div>
+
+                    <div id="panel-blender-light" style="display:none;" class="text-xs text-gray-500 p-1 bg-black rounded">
+                        Using lights from Blender.<br>
+                        Note: Area lights are approximated as Points.
+                    </div>
+                </div>
+
+                <!-- Environment / HDRI -->
+                <div class="control-group">
+                    <div class="group-title">Environment (HDRI)</div>
+                    <input type="file" id="inp-hdri" accept=".exr,.hdr" class="text-xs text-gray-400 w-full mb-2">
+
+                    <div class="slider-row">
+                        <label>Exposure</label>
+                        <input type="range" id="env-exp" min="0" max="5" step="0.1" value="1">
+                    </div>
+
+                    <div class="slider-row">
+                        <label>Alpha</label>
+                        <input type="range" id="env-bg-int" min="0" max="1" step="0.01" value="1">
+                    </div>
+
+                    <div class="slider-row">
+                        <label>Blur</label>
+                        <input type="range" id="env-blur" min="0" max="1" step="0.01" value="0">
+                    </div>
+
+                    <div class="group-title mt-3" style="font-size:0.65rem;">HDRI Rotation (Global Axis)</div>
+                    <div class="slider-row">
+                        <label>Rot X</label>
+                        <input type="range" id="env-rot-x" min="0" max="360" step="1" value="90">
+                    </div>
+                    <div class="slider-row">
+                        <label>Rot Y</label>
+                        <input type="range" id="env-rot-y" min="0" max="360" step="1" value="0">
+                    </div>
+                    <div class="slider-row">
+                        <label>Rot Z</label>
+                        <input type="range" id="env-rot-z" min="0" max="360" step="1" value="0">
+                    </div>
+
+                    <div class="flex items-center mt-2 mb-2">
+                        <input type="checkbox" id="chk-bg" checked class="mr-2">
+                        <label class="text-xs text-gray-400">Show Background</label>
+                    </div>
+
+                    <button id="btn-remove-hdri" class="btn-red">Remove/Release HDRI</button>
+                </div>
+            </div>
+
+            <!-- === SCRIPTING TAB === -->
+            <div id="panel-script" style="display:none;">
+                <div class="control-group">
+                    <div class="group-title">Python Code</div>
+                    <div class="text-xs text-gray-500 mb-2">Shortcuts: Ctrl+Enter to Run, Ctrl+Tab to Complete</div>
+                    <div class="code-wrapper">
+                        <textarea id="inp-custom-code" class="code-input" spellcheck="false" placeholder="# Example:
+import bpy
+bpy.ops.mesh.primitive_cube_add()"></textarea>
+                        <div id="suggestion-box"></div>
+                    </div>
+                    <button id="btn-run-custom" class="btn-blue">Run Code (Ctrl+Enter)</button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <div id="main-view">
+        <div id="canvas-container" class="w-full h-full" style="height: calc(100vh - 100px);"></div>
+        <div id="log-wrapper">
+            <div id="log-panel">Ready. Connect to Blender to start.</div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { TransformControls } from 'three/addons/controls/TransformControls.js';
+        import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+        import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+
+        // --- Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        if (scene.environmentRotation) {
+            scene.backgroundRotation.order = 'YXZ';
+            scene.environmentRotation.order = 'YXZ';
+        }
+
+        // Z-UP Setup
+        const camera = new THREE.PerspectiveCamera(50, (window.innerWidth-380)/(window.innerHeight-100), 0.1, 1000);
+        camera.up.set(0, 0, 1);
+        camera.position.set(8, -8, 6);
+        camera.lookAt(0, 0, 0);
+
+        const renderer = new THREE.WebGLRenderer({antialias:true, alpha: true});
+        renderer.setSize(window.innerWidth-380, window.innerHeight-100);
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const orbit = new OrbitControls(camera, renderer.domElement);
+        orbit.enableDamping = true;
+
+        // Groups
+        const blenderObjects = new THREE.Group();
+        const blenderLights = new THREE.Group();
+        const defaultLights = new THREE.Group();
+        const helpersGroup = new THREE.Group(); // Contains visual helpers
+
+        scene.add(blenderObjects);
+        scene.add(blenderLights);
+        scene.add(defaultLights);
+        scene.add(helpersGroup);
+
+        // Default Lights
+        const ambLight = new THREE.AmbientLight(0xffffff, 0.2);
+        defaultLights.add(ambLight);
+        const defDirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        defDirLight.position.set(5, -5, 10);
+        defaultLights.add(defDirLight);
+
+        // Helpers
+        const grid = new THREE.GridHelper(20, 20, 0x333333, 0x222222);
+        grid.rotation.x = Math.PI / 2;
+        scene.add(grid);
+        scene.add(new THREE.AxesHelper(2));
+
+        // Controls
+        const transformControl = new TransformControls(camera, renderer.domElement);
+        scene.add(transformControl);
+        const selectionBox = new THREE.BoxHelper(new THREE.Object3D(), 0xffff00);
+        selectionBox.visible = false;
+        scene.add(selectionBox);
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        // --- Helpers Management ---
+        const activeHelpers = [];
+
+        function animate(){
+            requestAnimationFrame(animate);
+            orbit.update();
+            // Update light helpers to follow their lights
+            activeHelpers.forEach(h => h.update());
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.onresize = () => {
+            const w = window.innerWidth-380, h = window.innerHeight-100;
+            renderer.setSize(w, h); camera.aspect = w/h; camera.updateProjectionMatrix();
+        };
+
+        // --- Tab Logic ---
+        document.getElementById('tab-scene').onclick = () => switchTab('scene');
+        document.getElementById('tab-script').onclick = () => switchTab('script');
+
+        function switchTab(mode) {
+            document.getElementById('tab-scene').className = `mode-btn ${mode==='scene'?'active':''}`;
+            document.getElementById('tab-script').className = `mode-btn ${mode==='script'?'active':''}`;
+            document.getElementById('panel-scene').style.display = mode==='scene'?'block':'none';
+            document.getElementById('panel-script').style.display = mode==='script'?'block':'none';
+        }
+
+        // --- Bridge Logic ---
+        let socket = null;
+        const logPanel = document.getElementById('log-panel');
+        function log(msg, type='') {
+            const div = document.createElement('div');
+            div.className = `log-line ${type==='error'?'log-error':'log-success'}`;
+            div.innerText = msg; logPanel.appendChild(div); logPanel.scrollTop = logPanel.scrollHeight;
+        }
+
+        document.getElementById('btn-connect').onclick = () => {
+            if(socket) return;
+            try {
+                socket = new WebSocket('ws://localhost:8081');
+                socket.onopen = () => {
+                    document.getElementById('status-dot').classList.add('connected');
+                    document.getElementById('btn-connect').style.display = 'none';
+                    log("Connected.");
+                };
+                socket.onmessage = (e) => {
+                    const data = JSON.parse(e.data);
+                    if (data.type === 'scene_data') {
+                        buildScene(data.objects);
+                        log(`Synced ${data.objects.length} items.`);
+                    } else if (data.type === 'completion_result') {
+                        handleCompletion(data.matches);
+                    } else if (data.type === 'execution_result') {
+                        log(data.output || "Done", data.result === 'Error' ? 'error' : 'success');
+                    }
+                };
+                socket.onclose = () => {
+                    document.getElementById('status-dot').classList.remove('connected');
+                    document.getElementById('btn-connect').style.display = 'block';
+                };
+            } catch(e) { log("Error: " + e); }
+        };
+
+        document.getElementById('btn-get-scene').onclick = () => {
+            if(socket) socket.send(JSON.stringify({ type: "get_scene" }));
+            log("Fetching scene...");
+        };
+
+        // --- Scene Building ---
+        function buildScene(items) {
+            transformControl.detach(); selectionBox.visible=false;
+            while(blenderObjects.children.length > 0) blenderObjects.remove(blenderObjects.children[0]);
+            while(blenderLights.children.length > 0) blenderLights.remove(blenderLights.children[0]);
+            while(helpersGroup.children.length > 0) helpersGroup.remove(helpersGroup.children[0]);
+            activeHelpers.length = 0; // Clear helper array
+            document.getElementById('outliner-list').innerHTML = '';
+
+            let hasLights = false;
+
+            items.forEach(data => {
+                if(data.type === 'MESH') {
+                    const geo = new THREE.BufferGeometry();
+                    geo.setAttribute('position', new THREE.Float32BufferAttribute(data.vertices, 3));
+                    geo.setIndex(data.indices);
+                    geo.computeVertexNormals();
+                    const mat = new THREE.MeshStandardMaterial({ color: 0x888888, flatShading: false });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    applyTransform(mesh, data);
+                    mesh.userData = { name: data.name, type: 'MESH' };
+                    blenderObjects.add(mesh);
+                    addToOutliner(data.name, 'MESH');
+                }
+                else if (data.type === 'LIGHT') {
+                    hasLights = true;
+                    let light;
+                    const color = new THREE.Color().fromArray(data.color);
+                    const intensity = data.energy / 20.0;
+
+                    if (data.light_type === 'SUN') {
+                        light = new THREE.DirectionalLight(color, intensity);
+                        // IMPORTANT: DirectionalLight shines from position to target.
+                        // To rotate it like in Blender, we parent the target to the light.
+                        // Blender Sun points down -Z local.
+                        light.position.set(0,0,0); // Reset local
+                        light.target.position.set(0, 0, -1);
+                        light.add(light.target);
+
+                        const helper = new THREE.DirectionalLightHelper(light, 2);
+                        helpersGroup.add(helper);
+                        activeHelpers.push(helper);
+                    }
+                    else if (data.light_type === 'SPOT') {
+                        light = new THREE.SpotLight(color, intensity);
+                        light.angle = data.spot_size / 2;
+                        light.penumbra = data.spot_blend;
+                        // Spot also needs target parenting for rotation
+                        light.target.position.set(0, 0, -1);
+                        light.add(light.target);
+
+                        const helper = new THREE.SpotLightHelper(light);
+                        helpersGroup.add(helper);
+                        activeHelpers.push(helper);
+                    }
+                    else {
+                        // Point & Area (Approximated as Point)
+                        light = new THREE.PointLight(color, intensity);
+                        const helper = new THREE.PointLightHelper(light, 0.5);
+                        helpersGroup.add(helper);
+                        // No update needed for point light helper usually, but consistency
+                    }
+
+                    applyTransform(light, data);
+                    light.userData = { name: data.name, type: 'LIGHT' };
+                    blenderLights.add(light);
+
+                    // Add clickable hit sphere for easier selection
+                    const hitGeo = new THREE.SphereGeometry(0.6, 8, 8);
+                    const hitMat = new THREE.MeshBasicMaterial({ visible: false, wireframe:true });
+                    const hitMesh = new THREE.Mesh(hitGeo, hitMat);
+                    light.add(hitMesh); // Child of light, moves with it
+                    hitMesh.userData = { isHitVolume: true, parentLight: light };
+
+                    addToOutliner(data.name, 'LIGHT');
+                }
+            });
+
+            if (hasLights) {
+                document.getElementById('light-source').value = 'blender';
+                updateLightSource();
+                log("Switched to Blender Lights");
+            } else {
+                updateLightSource();
+            }
+        }
+
+        function applyTransform(obj, data) {
+            obj.position.set(...data.pos);
+            obj.rotation.set(...data.rot);
+            obj.scale.set(...data.scl);
+        }
+
+        function addToOutliner(name, type) {
+            const div = document.createElement('div');
+            div.className = 'outliner-item';
+            const iconClass = type === 'MESH' ? 'icon-mesh' : 'icon-light';
+            div.innerHTML = `<span class="icon-type ${iconClass}"></span> ${name}`;
+            div.onclick = () => selectByName(name);
+            document.getElementById('outliner-list').appendChild(div);
+        }
+
+        // --- Selection ---
+        let selectedObj = null;
+
+        function selectByName(name) {
+            let obj = blenderObjects.children.find(c => c.userData.name === name);
+            if(!obj) {
+                const light = blenderLights.children.find(c => c.userData.name === name);
+                if(light) obj = light;
+            }
+            if(obj) selectObject(obj);
+        }
+
+        function selectObject(obj) {
+            selectedObj = obj;
+            transformControl.attach(obj);
+
+            if (obj.userData.type === 'MESH') {
+                selectionBox.setFromObject(obj);
+                selectionBox.visible = true;
+                document.getElementById('inspector-light').style.display = 'none';
+            } else {
+                selectionBox.visible = false;
+                document.getElementById('inspector-light').style.display = 'block';
+                document.getElementById('inp-light-col').value = '#' + obj.color.getHexString();
+                document.getElementById('inp-light-int').value = obj.intensity;
+                document.getElementById('val-light-int').innerText = obj.intensity.toFixed(1);
+            }
+
+            document.getElementById('inspector-empty').style.display = 'none';
+            document.getElementById('inspector-controls').style.display = 'block';
+            document.getElementById('sel-name').innerText = obj.userData.name;
+            updateInspectorInputs();
+
+            document.querySelectorAll('.outliner-item').forEach(el => {
+                if(el.innerText.includes(obj.userData.name)) el.classList.add('active');
+                else el.classList.remove('active');
+            });
+        }
+
+        function updateInspectorInputs() {
+            if(!selectedObj) return;
+            const p = selectedObj.position, r = selectedObj.rotation, s = selectedObj.scale;
+            const d = (rad) => parseFloat((rad * 180 / Math.PI).toFixed(1));
+            const f = (val) => parseFloat(val.toFixed(2));
+
+            document.getElementById('inp-px').value = f(p.x); document.getElementById('inp-py').value = f(p.y); document.getElementById('inp-pz').value = f(p.z);
+            document.getElementById('inp-rx').value = d(r.x); document.getElementById('inp-ry').value = d(r.y); document.getElementById('inp-rz').value = d(r.z);
+            document.getElementById('inp-sx').value = f(s.x); document.getElementById('inp-sy').value = f(s.y); document.getElementById('inp-sz').value = f(s.z);
+        }
+
+        // --- Inputs ---
+        const inputs = ['px','py','pz', 'rx','ry','rz', 'sx','sy','sz'];
+        inputs.forEach(id => document.getElementById('inp-'+id).addEventListener('input', applyInspectorChange));
+
+        document.getElementById('inp-light-col').addEventListener('input', (e) => {
+            if(selectedObj && selectedObj.isLight) selectedObj.color.set(e.target.value);
+        });
+        document.getElementById('inp-light-int').addEventListener('input', (e) => {
+            if(selectedObj && selectedObj.isLight) {
+                selectedObj.intensity = parseFloat(e.target.value);
+                document.getElementById('val-light-int').innerText = selectedObj.intensity.toFixed(1);
+            }
+        });
+
+        function applyInspectorChange() {
+            if(!selectedObj) return;
+            const rad = (deg) => deg * Math.PI / 180;
+            const v = (id) => parseFloat(document.getElementById('inp-'+id).value) || 0;
+
+            selectedObj.position.set(v('px'), v('py'), v('pz'));
+            selectedObj.rotation.set(rad(v('rx')), rad(v('ry')), rad(v('rz')));
+            selectedObj.scale.set(v('sx'), v('sy'), v('sz'));
+
+            if(selectedObj.userData.type === 'MESH') selectionBox.update();
+            // Helpers update automatically in animate loop
+            sendUpdate(selectedObj);
+        }
+
+        // Gizmo Sync
+        transformControl.addEventListener('change', () => {
+            if(transformControl.object) {
+                if(transformControl.object.userData.type === 'MESH') selectionBox.update();
+                updateInspectorInputs();
+            }
+        });
+        transformControl.addEventListener('dragging-changed', (e) => {
+            orbit.enabled = !e.value;
+            if(!e.value && transformControl.object) sendUpdate(transformControl.object);
+        });
+
+        function sendUpdate(obj) {
+            if(!socket) return;
+            socket.send(JSON.stringify({
+                type: "update_object", name: obj.userData.name,
+                pos: obj.position.toArray(), rot: [obj.rotation.x, obj.rotation.y, obj.rotation.z], scl: obj.scale.toArray(),
+                // Sync light energy back
+                ...(obj.isLight ? { energy: obj.intensity * 20.0, color: obj.color.toArray() } : {})
+            }));
+        }
+
+        // Raycasting
+        renderer.domElement.addEventListener('pointerdown', (e) => {
+            if(!orbit.enabled) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left)/rect.width)*2-1; mouse.y = -((e.clientY - rect.top)/rect.height)*2+1;
+            raycaster.setFromCamera(mouse, camera);
+
+            // Check Mesh AND Light Hit Volumes (children of lights)
+            // We need to traverse to find clickables
+            const clickables = [];
+            blenderObjects.children.forEach(c => clickables.push(c));
+            blenderLights.children.forEach(l => {
+                // Add the hit sphere
+                l.children.forEach(c => {
+                    if(c.userData.isHitVolume) clickables.push(c);
+                });
+            });
+
+            const intersects = raycaster.intersectObjects(clickables);
+
+            if(intersects.length > 0) {
+                let target = intersects[0].object;
+                if(target.userData.isHitVolume) target = target.userData.parentLight;
+                selectObject(target);
+            }
+            else {
+                transformControl.detach(); selectionBox.visible = false;
+                document.getElementById('inspector-empty').style.display='block';
+                document.getElementById('inspector-controls').style.display='none';
+                document.querySelectorAll('.outliner-item').forEach(el => el.classList.remove('active'));
+                selectedObj = null;
+            }
+        });
+
+        document.getElementById('mode-t').onclick = () => transformControl.setMode('translate');
+        document.getElementById('mode-r').onclick = () => transformControl.setMode('rotate');
+        document.getElementById('mode-s').onclick = () => transformControl.setMode('scale');
+        document.getElementById('space-local').onclick = (e) => { transformControl.setSpace('local'); e.target.classList.add('active'); document.getElementById('space-world').classList.remove('active'); };
+        document.getElementById('space-world').onclick = (e) => { transformControl.setSpace('world'); e.target.classList.add('active'); document.getElementById('space-local').classList.remove('active'); };
+
+        // --- Lighting ---
+        const lightSrc = document.getElementById('light-source');
+        lightSrc.onchange = updateLightSource;
+        function updateLightSource() {
+            if(lightSrc.value === 'default') {
+                defaultLights.visible = true; blenderLights.visible = false; helpersGroup.visible = false;
+                document.getElementById('panel-default-light').style.display = 'block';
+                document.getElementById('panel-blender-light').style.display = 'none';
+            } else {
+                defaultLights.visible = false; blenderLights.visible = true; helpersGroup.visible = true;
+                document.getElementById('panel-default-light').style.display = 'none';
+                document.getElementById('panel-blender-light').style.display = 'block';
+            }
+        }
+
+        // Default Light Controls
+        document.getElementById('def-light-int').addEventListener('input', (e) => {
+            defDirLight.intensity = parseFloat(e.target.value);
+            ambLight.intensity = parseFloat(e.target.value) * 0.2;
+        });
+        document.getElementById('def-light-rot').addEventListener('input', (e) => {
+            const ang = parseFloat(e.target.value);
+            defDirLight.position.set(Math.sin(ang)*10, -10, Math.cos(ang)*10);
+        });
+
+        // --- HDRI ---
+        const updateHDRI = () => {
+            if (!scene.environmentRotation) return;
+            const rotX = parseFloat(document.getElementById('env-rot-x').value) * Math.PI / 180;
+            const rotY = parseFloat(document.getElementById('env-rot-y').value) * Math.PI / 180;
+            const rotZ = parseFloat(document.getElementById('env-rot-z').value) * Math.PI / 180;
+            const newRot = new THREE.Euler(rotX, rotY, rotZ, 'YXZ');
+            scene.backgroundRotation.copy(newRot);
+            scene.environmentRotation.copy(newRot);
+        };
+
+        document.getElementById('inp-hdri').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            const url = URL.createObjectURL(file);
+            const ext = file.name.split('.').pop().toLowerCase();
+            const loader = ext === 'exr' ? new EXRLoader() : new RGBELoader();
+            loader.load(url, (texture) => {
+                texture.mapping = THREE.EquirectangularReflectionMapping;
+                scene.environment = texture;
+                scene.background = texture;
+                updateHDRI();
+                log(`Loaded ${file.name}`);
+            });
+        });
+
+        document.getElementById('btn-remove-hdri').onclick = () => {
+            scene.environment = null;
+            scene.background = new THREE.Color(0x111111);
+            scene.backgroundBlurriness = 0;
+            scene.backgroundIntensity = 1;
+        };
+
+        document.getElementById('env-exp').addEventListener('input', (e) => renderer.toneMappingExposure = parseFloat(e.target.value));
+        document.getElementById('env-bg-int').addEventListener('input', (e) => scene.backgroundIntensity = parseFloat(e.target.value));
+        document.getElementById('env-blur').addEventListener('input', (e) => scene.backgroundBlurriness = parseFloat(e.target.value));
+        ['x','y','z'].forEach(axis => document.getElementById('env-rot-'+axis).addEventListener('input', updateHDRI));
+
+        document.getElementById('chk-bg').addEventListener('change', (e) => {
+            scene.background = e.target.checked ? scene.environment : null;
+            if(!e.target.checked) scene.background = new THREE.Color(0x111111);
+        });
+
+        // --- Scripting ---
+        const codeInput = document.getElementById('inp-custom-code');
+        const suggestionBox = document.getElementById('suggestion-box');
+        let currentSuggestions = [], suggestionIndex = 0;
+
+        document.getElementById('btn-run-custom').onclick = () => {
+            if(socket) socket.send(JSON.stringify({ type: "execute", code: codeInput.value }));
+            log("Executing script...");
+        };
+
+        codeInput.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('btn-run-custom').click();
+                return;
+            }
+            if (e.ctrlKey && e.key === 'Tab') {
+                e.preventDefault();
+                const cursor = codeInput.selectionStart;
+                const text = codeInput.value;
+                const leftPart = text.slice(0, cursor);
+                const match = leftPart.match(/([a-zA-Z0-9_.]+)$/);
+                if (match && socket) socket.send(JSON.stringify({ type: "complete", text: match[0] }));
+            }
+            // Simple indentation support
+            if (e.key === 'Tab' && !e.ctrlKey) {
+                e.preventDefault();
+                const s = codeInput.selectionStart;
+                codeInput.value = codeInput.value.substring(0, codeInput.selectionStart) + "    " + codeInput.value.substring(codeInput.selectionEnd);
+                codeInput.selectionEnd = s + 4;
+            }
+        });
+
+        function handleCompletion(matches) {
+            if(!matches || matches.length === 0) return;
+            suggestionBox.style.display = 'block';
+            suggestionBox.innerHTML = matches.map(m => `<div class="suggestion-item">${m}</div>`).join('');
+            // Position approximate
+            suggestionBox.style.top = (codeInput.offsetTop + 20) + 'px';
+            suggestionBox.style.left = codeInput.offsetLeft + 'px';
+
+            Array.from(suggestionBox.children).forEach(div => {
+                div.onclick = () => {
+                    // Simple replace logic for demo
+                    const cursor = codeInput.selectionStart;
+                    const text = codeInput.value;
+                    const leftPart = text.slice(0, cursor);
+                    const match = leftPart.match(/([a-zA-Z0-9_.]+)$/);
+                    if(match) {
+                        const prefix = match[0];
+                        const suggestion = div.innerText;
+                        const newVal = text.substring(0, cursor - prefix.length) + suggestion + text.substring(cursor);
+                        codeInput.value = newVal;
+                    }
+                    suggestionBox.style.display = 'none';
+                    codeInput.focus();
+                }
+            });
+        }
+        document.addEventListener('click', (e) => {
+            if (e.target !== codeInput && e.target.parentElement !== suggestionBox) suggestionBox.style.display = 'none';
+        });
+
+    </script>
+</body>
+</html>
